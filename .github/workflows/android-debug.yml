@@ -17,10 +17,11 @@ concurrency:
 jobs:
   verify-and-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      GRADLE_OPTS: -Xmx4g -XX:MaxMetaspaceSize=1g
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,45 +49,35 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Unpack Android Studio project
+      - name: Extract Android Studio project
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p project-source
-          unzip -q ORBIT-Android-Project.zip -d project-source
+          test -f ORBIT-Android-Project.tar.xz
+          tar -xJf ORBIT-Android-Project.tar.xz -C project-source
           SETTINGS_FILE="$(find project-source -type f -name settings.gradle.kts -print -quit)"
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "::error::No settings.gradle.kts found in project archive."
+            echo "::error::settings.gradle.kts is missing from the source archive."
             exit 1
           fi
           PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
-          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "::error::The archive is missing app/build.gradle.kts."
-            exit 1
-          fi
-          touch "$PROJECT_DIR/gradle.properties"
-          if ! grep -qx 'android.useAndroidX=true' "$PROJECT_DIR/gradle.properties"; then
-            echo 'android.useAndroidX=true' >> "$PROJECT_DIR/gradle.properties"
-          fi
-          if ! grep -qx 'android.useAndroidX=true' "$PROJECT_DIR/gradle.properties"; then
-            echo 'android.useAndroidX=true' >> "$PROJECT_DIR/gradle.properties"
-          fi
-          cat >> "$PROJECT_DIR/app/build.gradle.kts" <<'GRADLE'
-          android {
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-          }
-          GRADLE
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          test -f "$PROJECT_DIR/gradle.properties"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project: $PROJECT_DIR"
 
       - name: Run unit tests and build Debug APK
         shell: bash
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-          gradle --no-daemon --stacktrace clean testDebugUnitTest assembleDebug
+          gradle --no-daemon --max-workers=2 --stacktrace clean testDebugUnitTest assembleDebug
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          echo "Built APK: $APK"
+          ls -lh "$APK"
+          sha256sum "$APK"
 
       - name: Upload Debug APK and test reports
         uses: actions/upload-artifact@v4
