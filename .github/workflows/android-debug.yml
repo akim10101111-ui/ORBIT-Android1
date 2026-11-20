@@ -78,6 +78,13 @@ jobs:
           echo "Built APK: $APK"
           ls -lh "$APK"
           sha256sum "$APK"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK_PATH"
 
       - name: Upload Debug APK and test reports
         uses: actions/upload-artifact@v4
