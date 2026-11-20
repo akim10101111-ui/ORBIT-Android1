@@ -64,30 +64,9 @@ jobs:
             echo "::error::The archive is missing app/build.gradle.kts."
             exit 1
           fi
-          if [ -f "$PROJECT_DIR/gradle.properties" ]; then
-            grep -q '^android.useAndroidX=true
-
-      - name: Run unit tests and build Debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$PROJECT_DIR"
-          gradle --no-daemon --stacktrace clean testDebugUnitTest assembleDebug
-
-      - name: Upload Debug APK and test reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ORBIT-debug-apk-and-test-reports
-          path: |
-            project-source/**/build/outputs/apk/debug/*.apk
-            project-source/**/build/reports/tests/testDebugUnitTest/**
-            project-source/**/build/test-results/testDebugUnitTest/**
-          if-no-files-found: warn
-          retention-days: 14
- "$PROJECT_DIR/gradle.properties" || echo 'android.useAndroidX=true' >> "$PROJECT_DIR/gradle.properties"
-          else
-            printf 'android.useAndroidX=true\n' > "$PROJECT_DIR/gradle.properties"
+          touch "$PROJECT_DIR/gradle.properties"
+          if ! grep -qx 'android.useAndroidX=true' "$PROJECT_DIR/gradle.properties"; then
+            echo 'android.useAndroidX=true' >> "$PROJECT_DIR/gradle.properties"
           fi
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
