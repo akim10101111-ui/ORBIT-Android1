@@ -1,57 +1,72 @@
-name: Build ORBIT Debug APK
+name: ORBIT Android CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: orbit-android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  verify-and-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      - name: Unpack uploaded project archive
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Unpack Android Studio project
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p extracted
-          unzip -q ORBIT-Android-Project.zip -d extracted
-          wrapper="$(find extracted -type f -name gradlew -print -quit)"
-          if [ -z "$wrapper" ]; then
-            echo "::error::No Gradle wrapper (gradlew) found inside the project archive."
-            echo "Please upload the Android Studio project files directly or include gradlew."
+          mkdir -p project-source
+          unzip -q ORBIT-Android-Project.zip -d project-source
+          PROJECT_DIR="$(find project-source -type f -name settings.gradle.kts -print -quit | xargs dirname)"
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "::error::The ZIP does not contain a valid Android Gradle project."
             exit 1
           fi
-          project_dir="$(dirname "$wrapper")"
-          echo "PROJECT_DIR=$project_dir" >> "$GITHUB_ENV"
-          chmod +x "$wrapper"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Build Debug APK
+      - name: Run tests and build Debug APK
         shell: bash
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-          ./gradlew --no-daemon assembleDebug
+          gradle --no-daemon --stacktrace clean testDebugUnitTest assembleDebug
 
-      - name: Upload Debug APK
+      - name: Upload Debug APK and test reports
         uses: actions/upload-artifact@v4
-        if: success()
+        if: always()
         with:
-          name: ORBIT-debug-apk
+          name: ORBIT-debug-apk-and-test-reports
           path: |
-            extracted/**/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+            project-source/**/build/outputs/apk/debug/*.apk
+            project-source/**/build/reports/tests/testDebugUnitTest/**
+            project-source/**/build/test-results/testDebugUnitTest/**
+          if-no-files-found: warn
           retention-days: 14
