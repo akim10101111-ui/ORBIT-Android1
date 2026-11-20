@@ -18,6 +18,9 @@ jobs:
   verify-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,11 +31,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK platform 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::Android SDK command-line tools are missing on the runner."
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -45,14 +54,19 @@ jobs:
           set -euo pipefail
           mkdir -p project-source
           unzip -q ORBIT-Android-Project.zip -d project-source
-          PROJECT_DIR="$(find project-source -type f -name settings.gradle.kts -print -quit | xargs dirname)"
-          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "::error::The ZIP does not contain a valid Android Gradle project."
+          SETTINGS_FILE="$(find project-source -type f -name settings.gradle.kts -print -quit)"
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "::error::No settings.gradle.kts found in project archive."
+            exit 1
+          fi
+          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "::error::The archive is missing app/build.gradle.kts."
             exit 1
           fi
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Run tests and build Debug APK
+      - name: Run unit tests and build Debug APK
         shell: bash
         run: |
           set -euo pipefail
