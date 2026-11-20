@@ -78,13 +78,18 @@ jobs:
           echo "Built APK: $APK"
           ls -lh "$APK"
           sha256sum "$APK"
-          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          echo "APK_PATH=$PWD/$APK" >> "$GITHUB_ENV"
 
       - name: Verify APK signature
         shell: bash
         run: |
           set -euo pipefail
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK_PATH"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print -quit)"
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner was not installed by Android SDK build-tools."
+            exit 1
+          fi
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH"
 
       - name: Upload Debug APK and test reports
         uses: actions/upload-artifact@v4
