@@ -68,6 +68,17 @@ jobs:
           if ! grep -qx 'android.useAndroidX=true' "$PROJECT_DIR/gradle.properties"; then
             echo 'android.useAndroidX=true' >> "$PROJECT_DIR/gradle.properties"
           fi
+          if ! grep -qx 'android.useAndroidX=true' "$PROJECT_DIR/gradle.properties"; then
+            echo 'android.useAndroidX=true' >> "$PROJECT_DIR/gradle.properties"
+          fi
+          cat >> "$PROJECT_DIR/app/build.gradle.kts" <<'GRADLE'
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          GRADLE
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Run unit tests and build Debug APK
